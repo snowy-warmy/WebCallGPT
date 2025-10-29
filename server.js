@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Serve /public as static files
+// Serve static files (frontend)
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -20,14 +20,14 @@ const server = app.listen(PORT, () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
 
-// ✅ WebSocket proxy for OpenAI Realtime API
+// WebSocket bridge
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", async (clientSocket) => {
   console.log("🔗 Browser connected");
 
   try {
-    // Create ephemeral session with OpenAI Realtime API
+    // Create an ephemeral session
     const sessionResp = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
       headers: {
@@ -37,24 +37,27 @@ wss.on("connection", async (clientSocket) => {
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview",
         voice: "alloy",
-        instructions:
-          "You are a friendly Dutch assistant who helps users talk about sustainability and verduurzamen products."
+        instructions: "You are a friendly Dutch assistant that helps users talk about verduurzaming and sustainable products."
       })
     });
 
     const data = await sessionResp.json();
     if (!data.client_secret?.value) {
-      console.error("❌ Error creating session:", data);
-      clientSocket.send(JSON.stringify({ error: "Failed to create session" }));
+      console.error("❌ Failed to create session:", data);
+      clientSocket.send(JSON.stringify({ error: "Session creation failed" }));
       return;
     }
 
-    // Connect backend socket → OpenAI
-    const openaiSocket = new WebSocket(data.client_secret.value, {
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+    // ✅ Connect to OpenAI’s realtime WebSocket
+    const openaiSocket = new WebSocket(
+      "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview",
+      {
+        headers: {
+          "Authorization": `Bearer ${data.client_secret.value}`,
+          "OpenAI-Beta": "realtime=v1"
+        }
       }
-    });
+    );
 
     openaiSocket.on("open", () => console.log("✅ Connected to OpenAI"));
     openaiSocket.on("message", (msg) => clientSocket.send(msg));
