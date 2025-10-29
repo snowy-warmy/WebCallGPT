@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Verduurzamen Voice Chat</title>
+</head>
+<body>
+  <h1>🎙️ Talk to Your Verduurzamen Assistant</h1>
+  <button id="start">Start Talking</button>
+  <button id="stop">Stop</button>
+  <audio id="assistantAudio" autoplay></audio>
+
+  <script>
+    let ws, mediaRecorder;
+
+    document.getElementById("start").onclick = async () => {
+      ws = new WebSocket(`wss://${window.location.host}`);
+
+      const audioContext = new AudioContext();
+      const audioElement = document.getElementById("assistantAudio");
+
+      ws.onmessage = async (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "audio") {
+            const audioBytes = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
+            const audioBuffer = await audioContext.decodeAudioData(audioBytes.buffer);
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+          }
+        } catch (err) {
+          console.error("Error processing message:", err);
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+      mediaRecorder.ondataavailable = async (e) => {
+        const arrayBuffer = await e.data.arrayBuffer();
+        ws.send(arrayBuffer);
+      };
+
+      mediaRecorder.start(250);
+    };
+
+    document.getElementById("stop").onclick = () => {
+      mediaRecorder?.stop();
+      ws?.close();
+    };
+  </script>
+</body>
+</html>
