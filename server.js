@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Serve static files (frontend)
+// Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -20,14 +20,14 @@ const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
-// ✅ WebSocket bridge between Browser <-> OpenAI
+// WebSocket bridge Browser <-> OpenAI
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", async (clientSocket) => {
   console.log("🔗 Browser connected");
 
   try {
-    // 1️⃣ Create an ephemeral OpenAI Realtime session
+    // Create ephemeral session
     const sessionResp = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
       headers: {
@@ -38,7 +38,7 @@ wss.on("connection", async (clientSocket) => {
         model: "gpt-4o-realtime-preview",
         voice: "alloy",
         instructions:
-          "You are a friendly Dutch sustainability assistant. Speak clearly, answer in Dutch, and help users talk about verduurzaming and eco-friendly home improvements."
+          "You are a friendly Dutch assistant helping users talk about verduurzaming and sustainable products. Respond clearly, naturally and always in Dutch."
       })
     });
 
@@ -49,7 +49,7 @@ wss.on("connection", async (clientSocket) => {
       return;
     }
 
-    // 2️⃣ Connect to the OpenAI Realtime WebSocket
+    // Connect to OpenAI realtime socket
     const openaiSocket = new WS(
       "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview",
       {
@@ -60,17 +60,16 @@ wss.on("connection", async (clientSocket) => {
       }
     );
 
-    // 3️⃣ Setup message queue for safe buffering
     const queue = [];
 
     openaiSocket.on("open", () => {
       console.log("✅ Connected to OpenAI");
-      // Flush queued messages
       while (queue.length > 0) openaiSocket.send(queue.shift());
     });
 
-    // Forward data between both sockets
+    // Debug logging
     clientSocket.on("message", (msg) => {
+      console.log("⬅️ From browser:", msg.toString().slice(0, 100));
       if (openaiSocket.readyState === WS.OPEN) {
         openaiSocket.send(msg);
       } else {
@@ -78,13 +77,5 @@ wss.on("connection", async (clientSocket) => {
       }
     });
 
-    openaiSocket.on("message", (msg) => clientSocket.send(msg));
-
-    // Cleanup
-    clientSocket.on("close", () => openaiSocket.close());
-    openaiSocket.on("close", () => clientSocket.close());
-    openaiSocket.on("error", (err) => console.error("OpenAI WS error:", err));
-  } catch (err) {
-    console.error("❌ Connection error:", err);
-  }
-});
+    openaiSocket.on("message", (msg) => {
+      console.log("➡️ F
