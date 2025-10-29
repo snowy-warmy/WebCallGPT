@@ -1,5 +1,5 @@
 import express from "express";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket as WS } from "ws";  // ✅ import the correct WebSocket class
 import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve static files (frontend)
+// Serve the public folder
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -20,14 +20,13 @@ const server = app.listen(PORT, () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
 
-// WebSocket bridge
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", async (clientSocket) => {
   console.log("🔗 Browser connected");
 
   try {
-    // Create an ephemeral session
+    // Create ephemeral session for Realtime API
     const sessionResp = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
       headers: {
@@ -37,7 +36,7 @@ wss.on("connection", async (clientSocket) => {
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview",
         voice: "alloy",
-        instructions: "You are a friendly Dutch assistant that helps users talk about verduurzaming and sustainable products."
+        instructions: "You are a friendly Dutch assistant that helps users with verduurzaming and sustainability advice."
       })
     });
 
@@ -48,8 +47,8 @@ wss.on("connection", async (clientSocket) => {
       return;
     }
 
-    // ✅ Connect to OpenAI’s realtime WebSocket
-    const openaiSocket = new WebSocket(
+    // ✅ Explicitly use WS from 'ws' module to connect to OpenAI
+    const openaiSocket = new WS(
       "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview",
       {
         headers: {
