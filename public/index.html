@@ -3,69 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <title>Verduurzamen Voice Chat</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f6f8fa;
+      text-align: center;
+      padding: 2em;
+    }
+    h1 { color: #007b5f; }
+    button {
+      margin: 1em;
+      padding: 0.7em 1.2em;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 0.4em;
+      cursor: pointer;
+    }
+    #start { background-color: #007b5f; color: white; }
+    #stop { background-color: #b33; color: white; }
+    #status {
+      margin-top: 1em;
+      font-weight: bold;
+      color: #444;
+    }
+  </style>
 </head>
 <body>
-  <h1>🎙️ Talk to Your Verduurzamen Assistant</h1>
+  <h1>🎙️ Verduurzamen Voice Assistant</h1>
+  <p>Press "Start Talking" and speak Dutch. The assistant will talk back!</p>
   <button id="start">Start Talking</button>
   <button id="stop">Stop</button>
+  <div id="status">Status: <span id="indicator">Idle</span></div>
   <audio id="assistantAudio" autoplay></audio>
 
   <script>
-    let ws, mediaRecorder;
+    let ws, mediaRecorder, audioContext;
+    const indicator = document.getElementById("indicator");
+
+    function setStatus(text, color = "#444") {
+      indicator.textContent = text;
+      indicator.style.color = color;
+    }
 
     document.getElementById("start").onclick = async () => {
+      setStatus("Connecting...", "#888");
       ws = new WebSocket(`wss://${window.location.host}`);
       ws.binaryType = "arraybuffer";
 
-      ws.onopen = () => console.log("🔗 Connected to backend");
+      ws.onopen = () => {
+        console.log("🔗 Connected to backend");
+        setStatus("Listening...", "#007b5f");
+      };
 
       ws.onmessage = async (event) => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === "response.audio.delta") {
-            // Play base64 audio chunks from model
+            // Convert base64 to audio and play
             const audioBytes = Uint8Array.from(atob(msg.delta), (c) => c.charCodeAt(0));
-            const audioCtx = new AudioContext();
-            const audioBuffer = await audioCtx.decodeAudioData(audioBytes.buffer);
-            const src = audioCtx.createBufferSource();
+            if (!audioContext) audioContext = new AudioContext();
+            const audioBuffer = await audioContext.decodeAudioData(audioBytes.buffer);
+            const src = audioContext.createBufferSource();
             src.buffer = audioBuffer;
-            src.connect(audioCtx.destination);
+            src.connect(audioContext.destination);
             src.start();
           }
-        } catch (e) {
-          // Ignore non-JSON chunks
+          if (msg.type === "response.text.delta") {
+            console.log("🤖 GPT:", msg.delta);
+          }
+        } catch (err) {
+          // Some non-JSON data may arrive; ignore
         }
       };
 
-      // Get microphone stream
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
 
       mediaRecorder.ondataavailable = async (e) => {
+        setStatus("Sending audio...", "#ff9500");
         const reader = new FileReader();
         reader.onloadend = () => {
           const base64Audio = reader.result.split(",")[1];
-          // Send audio to Realtime API as per protocol
-          ws.send(JSON.stringify({
-            type: "input_audio_buffer.append",
-            audio: base64Audio
-          }));
+          // Send audio chunk to server
+          ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: base64Audio }));
           ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
           ws.send(JSON.stringify({
             type: "response.create",
             response: {
-              modalities: ["audio"],
-              instructions: "Antwoord vriendelijk in het Nederlands en praat over verduurzaming."
+              modalities: ["audio", "text"],
+              instructions: "Antwoord vriendelijk in het Nederlands over verduurzaming."
             }
           }));
+          setStatus("Listening...", "#007b5f");
         };
         reader.readAsDataURL(e.data);
       };
 
-      mediaRecorder.start(1500); // send every 1.5 seconds
+      mediaRecorder.start(1500); // Send audio every 1.5s
     };
 
     document.getElementById("stop").onclick = () => {
+      setStatus("Stopped", "#b33");
       mediaRecorder?.stop();
       ws?.close();
     };
