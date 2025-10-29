@@ -78,4 +78,15 @@ wss.on("connection", async (clientSocket) => {
     });
 
     openaiSocket.on("message", (msg) => {
-      console.log("➡️ F
+      console.log("➡️ From OpenAI:", msg.toString().slice(0, 100));
+      clientSocket.send(msg);
+    });
+
+    // Cleanup
+    clientSocket.on("close", () => openaiSocket.close());
+    openaiSocket.on("close", () => clientSocket.close());
+    openaiSocket.on("error", (err) => console.error("OpenAI WS error:", err));
+  } catch (err) {
+    console.error("❌ Connection error:", err);
+  }
+});
