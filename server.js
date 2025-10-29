@@ -10,20 +10,26 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve static files (like index.html) from /public
+// ✅ Serve static files from /public
 app.use(express.static(path.join(__dirname, "public")));
 
+// Fallback: serve index.html for root requests
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Start HTTP server
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
-// WebSocket relay for OpenAI Realtime API
+// WebSocket server
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", async (clientSocket) => {
   console.log("🔗 Client connected");
 
-  // Create an ephemeral session for the OpenAI Realtime API
+  // Create OpenAI Realtime session
   const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
     method: "POST",
     headers: {
@@ -33,7 +39,7 @@ wss.on("connection", async (clientSocket) => {
     body: JSON.stringify({
       model: "gpt-4o-realtime-preview",
       voice: "alloy",
-      instructions: "You are a friendly Dutch assistant who helps people verduurzamen their homes.",
+      instructions: "You are a friendly assistant who talks to users about verduurzamen products.",
     }),
   });
 
@@ -44,7 +50,6 @@ wss.on("connection", async (clientSocket) => {
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
   });
 
-  // Proxy messages between browser ↔ OpenAI
   clientSocket.on("message", (msg) => openaiSocket.send(msg));
   openaiSocket.on("message", (msg) => clientSocket.send(msg));
 
