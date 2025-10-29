@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Verduurzamen Voice Chat</title>
 </head>
 <body>
@@ -15,35 +15,54 @@
 
     document.getElementById("start").onclick = async () => {
       ws = new WebSocket(`wss://${window.location.host}`);
+      ws.binaryType = "arraybuffer";
 
-      const audioContext = new AudioContext();
-      const audioElement = document.getElementById("assistantAudio");
+      ws.onopen = () => console.log("🔗 Connected to backend");
 
       ws.onmessage = async (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === "audio") {
-            const audioBytes = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
-            const audioBuffer = await audioContext.decodeAudioData(audioBytes.buffer);
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
-            source.start();
+          if (msg.type === "response.audio.delta") {
+            // Play base64 audio chunks from model
+            const audioBytes = Uint8Array.from(atob(msg.delta), (c) => c.charCodeAt(0));
+            const audioCtx = new AudioContext();
+            const audioBuffer = await audioCtx.decodeAudioData(audioBytes.buffer);
+            const src = audioCtx.createBufferSource();
+            src.buffer = audioBuffer;
+            src.connect(audioCtx.destination);
+            src.start();
           }
-        } catch (err) {
-          console.error("Error processing message:", err);
+        } catch (e) {
+          // Ignore non-JSON chunks
         }
       };
 
+      // Get microphone stream
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
 
       mediaRecorder.ondataavailable = async (e) => {
-        const arrayBuffer = await e.data.arrayBuffer();
-        ws.send(arrayBuffer);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result.split(",")[1];
+          // Send audio to Realtime API as per protocol
+          ws.send(JSON.stringify({
+            type: "input_audio_buffer.append",
+            audio: base64Audio
+          }));
+          ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+          ws.send(JSON.stringify({
+            type: "response.create",
+            response: {
+              modalities: ["audio"],
+              instructions: "Antwoord vriendelijk in het Nederlands en praat over verduurzaming."
+            }
+          }));
+        };
+        reader.readAsDataURL(e.data);
       };
 
-      mediaRecorder.start(250);
+      mediaRecorder.start(1500); // send every 1.5 seconds
     };
 
     document.getElementById("stop").onclick = () => {
