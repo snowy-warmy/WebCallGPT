@@ -43,6 +43,7 @@
         try {
           const msg = JSON.parse(event.data);
 
+          // 🎧 Audio playback
           if (msg.type === "response.audio.delta") {
             console.log("🎧 Audio delta received:", msg.delta.length);
             const audioBytes = Uint8Array.from(atob(msg.delta), c => c.charCodeAt(0));
@@ -54,16 +55,22 @@
             src.start();
           }
 
+          // 💬 Text transcript
           if (msg.type === "response.text.delta") {
             console.log("🤖 GPT:", msg.delta);
           }
+
+          if (msg.type === "error") {
+            console.error("⚠️ OpenAI error:", msg.error);
+          }
         } catch {
-          // Ignore binary or unknown chunks
+          // ignore binary chunks
         }
       };
 
+      // 🎙️ Capture microphone
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
 
       mediaRecorder.ondataavailable = async (e) => {
         setStatus("Sending audio...", "#ff9500");
@@ -71,8 +78,12 @@
         reader.onloadend = () => {
           const base64Audio = reader.result.split(",")[1];
 
-          // Send to backend/OpenAI
-          ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: base64Audio }));
+          // ✅ Tell OpenAI the audio format is webm
+          ws.send(JSON.stringify({ 
+            type: "input_audio_buffer.append", 
+            audio: base64Audio,
+            format: "webm" 
+          }));
           ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
           ws.send(JSON.stringify({
             type: "response.create",
@@ -86,7 +97,7 @@
         reader.readAsDataURL(e.data);
       };
 
-      mediaRecorder.start(1500); // Send every 1.5s
+      mediaRecorder.start(1500); // send every 1.5s
     };
 
     document.getElementById("stop").onclick = () => {
