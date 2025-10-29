@@ -1,36 +1,20 @@
 <!DOCTYPE html>
-<html>
+<html lang="nl">
 <head>
   <meta charset="UTF-8" />
   <title>Verduurzamen Voice Chat</title>
   <style>
-    body {
-      font-family: sans-serif;
-      background: #f6f8fa;
-      text-align: center;
-      padding: 2em;
-    }
+    body { font-family: sans-serif; background: #f6f8fa; text-align: center; padding: 2em; }
     h1 { color: #007b5f; }
-    button {
-      margin: 1em;
-      padding: 0.7em 1.2em;
-      font-size: 1.1em;
-      border: none;
-      border-radius: 0.4em;
-      cursor: pointer;
-    }
-    #start { background-color: #007b5f; color: white; }
-    #stop { background-color: #b33; color: white; }
-    #status {
-      margin-top: 1em;
-      font-weight: bold;
-      color: #444;
-    }
+    button { margin: 1em; padding: 0.7em 1.2em; font-size: 1.1em; border: none; border-radius: .4em; cursor: pointer; }
+    #start { background-color: #007b5f; color: #fff; }
+    #stop { background-color: #b33; color: #fff; }
+    #status { margin-top: 1em; font-weight: bold; color: #444; }
   </style>
 </head>
 <body>
   <h1>🎙️ Verduurzamen Voice Assistant</h1>
-  <p>Press "Start Talking" and speak Dutch. The assistant will talk back!</p>
+  <p>Druk op “Start Talking”, spreek Nederlands en de assistent praat terug!</p>
   <button id="start">Start Talking</button>
   <button id="stop">Stop</button>
   <div id="status">Status: <span id="indicator">Idle</span></div>
@@ -40,7 +24,7 @@
     let ws, mediaRecorder, audioContext;
     const indicator = document.getElementById("indicator");
 
-    function setStatus(text, color = "#444") {
+    function setStatus(text, color="#444") {
       indicator.textContent = text;
       indicator.style.color = color;
     }
@@ -58,9 +42,10 @@
       ws.onmessage = async (event) => {
         try {
           const msg = JSON.parse(event.data);
+
           if (msg.type === "response.audio.delta") {
-            // Convert base64 to audio and play
-            const audioBytes = Uint8Array.from(atob(msg.delta), (c) => c.charCodeAt(0));
+            console.log("🎧 Audio delta received:", msg.delta.length);
+            const audioBytes = Uint8Array.from(atob(msg.delta), c => c.charCodeAt(0));
             if (!audioContext) audioContext = new AudioContext();
             const audioBuffer = await audioContext.decodeAudioData(audioBytes.buffer);
             const src = audioContext.createBufferSource();
@@ -68,11 +53,12 @@
             src.connect(audioContext.destination);
             src.start();
           }
+
           if (msg.type === "response.text.delta") {
             console.log("🤖 GPT:", msg.delta);
           }
-        } catch (err) {
-          // Some non-JSON data may arrive; ignore
+        } catch {
+          // Ignore binary or unknown chunks
         }
       };
 
@@ -84,14 +70,15 @@
         const reader = new FileReader();
         reader.onloadend = () => {
           const base64Audio = reader.result.split(",")[1];
-          // Send audio chunk to server
+
+          // Send to backend/OpenAI
           ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: base64Audio }));
           ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
           ws.send(JSON.stringify({
             type: "response.create",
             response: {
               modalities: ["audio", "text"],
-              instructions: "Antwoord vriendelijk in het Nederlands over verduurzaming."
+              instructions: "Beantwoord vriendelijk in het Nederlands en zeg iets over verduurzaming."
             }
           }));
           setStatus("Listening...", "#007b5f");
@@ -99,7 +86,7 @@
         reader.readAsDataURL(e.data);
       };
 
-      mediaRecorder.start(1500); // Send audio every 1.5s
+      mediaRecorder.start(1500); // Send every 1.5s
     };
 
     document.getElementById("stop").onclick = () => {
