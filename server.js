@@ -2,7 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
-import systemPrompt from "./systemPrompt.js"; // ✅ import system prompt
+import systemPrompt from "./systemPrompt.js"; // ✅ import prompt
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +30,7 @@ app.get("/session", async (req, res) => {
         input_audio_format: "pcm16",
         input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
         instructions: systemPrompt,
+        voice_settings: { speed: 1.05 }, // Slightly quicker responses
       }),
     });
 
@@ -48,7 +49,7 @@ app.get("/session", async (req, res) => {
 });
 
 // ---------------------------------------------------------
-//  🔍 /search → Query Gemini API (woonwijzerwebshop.nl focused)
+//  🔍 /search → Gemini API (woonwijzerwebshop.nl focused)
 // ---------------------------------------------------------
 app.get("/search", async (req, res) => {
   let query = req.query.q;
@@ -75,16 +76,15 @@ app.get("/search", async (req, res) => {
               parts: [
                 {
                   text: `
-Gebruik Google-resultaten om de volgende query te beantwoorden:
+Gebruik actuele online informatie om de volgende vraag te beantwoorden:
 "${query}"
 
-Geef een korte Nederlandse samenvatting met maximaal 3 zinnen, 
-en vermeld:
-- 📦 productnaam of type
-- 💶 prijs of prijsindicatie (met valuta)
-- 🔗 relevante link(s) van woonwijzerwebshop.nl
+Geef een korte Nederlandse samenvatting (max 3 zinnen) met:
+- productnaam of categorie
+- prijs of prijsrange (met valuta)
+- korte beschrijving
 
-Formateer als vloeiende tekst, geschikt om voorgelezen te worden.
+Vermijd Markdown, HTML en links. Noem de domeinnaam als spraak, bijv. "op woonwijzerwebshop punt nl".
                   `,
                 },
               ],
@@ -100,7 +100,11 @@ Formateer als vloeiende tekst, geschikt om voorgelezen te worden.
       "Geen resultaten gevonden.";
 
     console.log("✅ Gemini resultaat ontvangen");
-    res.json({ result });
+
+    // Wrap result for GPT to understand it’s contextual info
+    res.json({
+      result: `Informatie van woonwijzerwebshop.nl:\n${result}\nVat dit samen in natuurlijke spraak zonder URLs.`,
+    });
   } catch (err) {
     console.error("❌ Gemini search error:", err);
     res.status(500).json({ error: "Gemini search failed" });
