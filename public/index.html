@@ -36,6 +36,12 @@
         color: #333;
         white-space: pre-wrap;
       }
+      #thinking {
+        display: none;
+        margin-top: 1rem;
+        color: #007b5f;
+        font-style: italic;
+      }
       #transcript {
         margin-top: 1rem;
         background: #fff;
@@ -49,12 +55,6 @@
       }
       #textContent {
         white-space: pre-wrap;
-      }
-      #thinking {
-        display: none;
-        margin-top: 1rem;
-        color: #007b5f;
-        font-style: italic;
       }
     </style>
   </head>
@@ -93,6 +93,7 @@
           const pc = new RTCPeerConnection();
           mic.getTracks().forEach((t) => pc.addTrack(t, mic));
 
+          // 🔊 Handle GPT audio
           pc.ontrack = (ev) => {
             const [stream] = ev.streams;
             const audio = document.createElement("audio");
@@ -102,6 +103,7 @@
             statusDiv.innerText = "🗣️ De adviseur luistert en spreekt terug...";
           };
 
+          // 💬 DataChannel
           const dc = pc.createDataChannel("oai-events");
           let liveText = "";
           let userTranscript = "";
@@ -125,12 +127,12 @@
                 liveText = "";
               }
 
-              // 🌐 Web search handling
+              // 🌐 Handle search requests
               if (msg.action === "search" && msg.query) {
                 console.log("🔍 GPT vraagt om zoekopdracht:", msg.query);
                 thinkingDiv.style.display = "block";
 
-                // Friendly audio feedback while searching
+                // Friendly feedback while searching
                 dc.send(
                   JSON.stringify({
                     type: "response.create",
@@ -149,18 +151,24 @@
                 thinkingDiv.style.display = "none";
                 console.log("🔎 Gemini resultaat:", data.result);
 
+                // Immediately respond with results
                 dc.send(
                   JSON.stringify({
                     type: "response.create",
                     response: {
                       modalities: ["audio", "text"],
-                      instructions: `Ik heb dit gevonden:\n\n${data.result}\n\nGebruik deze informatie om een kort antwoord te geven.`,
+                      instructions: `
+De gebruiker vroeg eerder naar ${msg.query}.
+Gebruik de volgende informatie om direct te antwoorden, zonder dat de gebruiker de vraag opnieuw hoeft te stellen.
+Spreek vloeiend Nederlands, zonder URLs of het woord 'hier'.
+Informatie:\n\n${data.result}
+                      `,
                     },
                   })
                 );
               }
-            } catch (err) {
-              // ignore binary data
+            } catch {
+              // Ignore binary data
             }
           };
 
@@ -177,7 +185,7 @@
               })
             );
 
-            // ✅ Start professional greeting
+            // Professional greeting
             dc.send(
               JSON.stringify({
                 type: "response.create",
@@ -190,7 +198,7 @@
             );
           };
 
-          // SDP handshake
+          // WebRTC handshake
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           const resp = await fetch(
@@ -212,7 +220,8 @@
           }
           const answer = { type: "answer", sdp: await resp.text() };
           await pc.setRemoteDescription(answer);
-          statusDiv.innerText = "✅ Verbonden — praat nu met de VerduurzaamAdviseur.";
+          statusDiv.innerText =
+            "✅ Verbonden — praat nu met de VerduurzaamAdviseur.";
         } catch (err) {
           console.error("❌ Setup error:", err);
           statusDiv.innerText = "❌ Fout bij verbinden of microfoon.";
