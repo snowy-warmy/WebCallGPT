@@ -2,7 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
-import systemPrompt from "./systemPrompt.js"; // ✅ import prompt
+import systemPrompt from "./systemPrompt.js"; // ✅ import the prompt
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,13 +24,12 @@ app.get("/session", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-realtime-preview",
+        model: "gpt-4o-realtime-mini", // ✅ switched model
         voice: "coral",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
         input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
         instructions: systemPrompt,
-        voice_settings: { speed: 1.05 }, // Slightly quicker responses
       }),
     });
 
@@ -76,15 +75,15 @@ app.get("/search", async (req, res) => {
               parts: [
                 {
                   text: `
-Gebruik actuele online informatie om de volgende vraag te beantwoorden:
+Gebruik actuele informatie van het internet om de volgende vraag te beantwoorden:
 "${query}"
 
-Geef een korte Nederlandse samenvatting (max 3 zinnen) met:
+Geef een korte, natuurlijke Nederlandse samenvatting (maximaal 3 zinnen) met:
 - productnaam of categorie
 - prijs of prijsrange (met valuta)
 - korte beschrijving
 
-Vermijd Markdown, HTML en links. Noem de domeinnaam als spraak, bijv. "op woonwijzerwebshop punt nl".
+Vermijd Markdown, HTML of links. Noem de domeinnaam als spraak, bijvoorbeeld: "op woonwijzerwebshop punt nl".
                   `,
                 },
               ],
@@ -101,7 +100,7 @@ Vermijd Markdown, HTML en links. Noem de domeinnaam als spraak, bijv. "op woonwi
 
     console.log("✅ Gemini resultaat ontvangen");
 
-    // Wrap result for GPT to understand it’s contextual info
+    // Wrap result for GPT to use naturally in speech
     res.json({
       result: `Informatie van woonwijzerwebshop.nl:\n${result}\nVat dit samen in natuurlijke spraak zonder URLs.`,
     });
