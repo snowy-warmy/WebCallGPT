@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import systemPrompt from "./systemPrompt.js"; // ✅ import the prompt
+import systemPrompt from "./systemPrompt.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, "public")));
 
 // ---------------------------------------------------------
-//  🎧 /session → Create OpenAI Realtime session
+// 🎧 /session → Create OpenAI Realtime session
 // ---------------------------------------------------------
 app.get("/session", async (req, res) => {
   try {
@@ -23,7 +23,7 @@ app.get("/session", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-realtime-mini", // ✅ stable realtime model name
+        model: "gpt-4o-realtime-mini",
         voice: "coral",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
@@ -47,13 +47,54 @@ app.get("/session", async (req, res) => {
 });
 
 // ---------------------------------------------------------
-//  🔍 /search → Gemini API (woonwijzerwebshop.nl focused)
+// 🔍 /search → Gemini API (woonwijzerwebshop.nl focused)
 // ---------------------------------------------------------
 app.get("/search", async (req, res) => {
-  let query = req.query.q;
+  let query = req.query.q?.toLowerCase();
   if (!query) return res.status(400).json({ error: "Missing query" });
 
-  // Always prefer woonwijzerwebshop.nl
+  // 🧠 Prevent searching for known Woonwijzerwinkel topics
+  const serviceKeywords = [
+    "installateur",
+    "installatie",
+    "montage",
+    "subsidie",
+    "advies",
+    "adviesgesprek",
+    "contact",
+    "bezoek",
+    "winkel",
+    "showroom",
+  ];
+
+  if (serviceKeywords.some((kw) => query.includes(kw))) {
+    console.log("⚡ Local response triggered — no Gemini search:", query);
+
+    // Predefined company-aware responses
+    let reply = "Bij Woonwijzerwinkel helpen we hiermee. ";
+
+    if (query.includes("install"))
+      reply +=
+        "Wij regelen complete installatie en montage via onze eigen monteurs en partners.";
+    else if (query.includes("subsid"))
+      reply +=
+        "We helpen je gratis bij het aanvragen van subsidies en financieringsadvies.";
+    else if (query.includes("advies"))
+      reply +=
+        "Je kunt bij ons terecht voor een gratis adviesgesprek, online of in de showroom.";
+    else if (query.includes("contact") || query.includes("bezoek"))
+      reply +=
+        "Je kunt contact opnemen via woonwijzerwinkel punt nl slash contact of langskomen in onze showroom in Rotterdam, Den Haag of Eindhoven.";
+    else if (query.includes("winkel") || query.includes("showroom"))
+      reply +=
+        "We hebben fysieke showrooms in Rotterdam, Eindhoven en Den Haag waar je onze producten kunt bekijken.";
+
+    return res.json({
+      result: reply,
+    });
+  }
+
+  // Otherwise — perform Gemini lookup
   if (!query.includes("woonwijzerwebshop.nl")) {
     query = `site:woonwijzerwebshop.nl ${query}`;
   }
@@ -99,7 +140,6 @@ Vermijd Markdown, HTML of links. Noem de domeinnaam als spraak, bijvoorbeeld: "o
 
     console.log("✅ Gemini resultaat ontvangen");
 
-    // Wrap result for GPT to use naturally in speech
     res.json({
       result: `Informatie van woonwijzerwebshop.nl:\n${result}\nVat dit samen in natuurlijke spraak zonder URLs.`,
     });
