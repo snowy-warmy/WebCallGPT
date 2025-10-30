@@ -2,7 +2,7 @@
 <html lang="nl">
   <head>
     <meta charset="UTF-8" />
-    <title>Verduurzamen Voice Chat</title>
+    <title>VerduurzaamAdviseur Voice Chat</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -12,6 +12,7 @@
         padding: 3rem;
       }
       h1 { color: #007b5f; }
+      p { color: #555; }
       button {
         margin-top: 1rem;
         font-size: 1.1rem;
@@ -29,22 +30,37 @@
         color: #333;
         white-space: pre-wrap;
       }
+      #transcript {
+        margin-top: 1rem;
+        background: #fff;
+        border-radius: 8px;
+        padding: 1rem;
+        display: inline-block;
+        text-align: left;
+        width: 80%;
+        max-width: 600px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      }
     </style>
   </head>
   <body>
-    <h1>🎙️ Verduurzamen Voice Assistant</h1>
-    <p>Klik op “Start” en praat — de assistent zal direct antwoorden.</p>
+    <h1>🎙️ VerduurzaamAdviseur</h1>
+    <p>Klik op “Start” en praat — de assistent luistert, praat terug en toont de tekst live.</p>
     <button id="start">Start</button>
-    <div id="status"></div>
+    <div id="status">Niet verbonden</div>
+    <div id="transcript">🗒️ <strong>Live transcript:</strong><br><span id="textContent">...</span></div>
 
     <script type="module">
       const statusDiv = document.getElementById("status");
-      document.getElementById("start").onclick = async () => {
+      const transcriptDiv = document.getElementById("textContent");
+      const startBtn = document.getElementById("start");
+
+      startBtn.onclick = async () => {
         statusDiv.innerText = "🎤 Vraag microfoon toegang...";
         const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
         statusDiv.innerText = "✅ Microfoon actief. Verbinden met GPT...";
 
-        // Request ephemeral key from your backend
+        // Get ephemeral key from backend
         const session = await fetch("/session").then(r => r.json());
         if (!session?.client_secret?.value) {
           statusDiv.innerText = "❌ Fout bij sessie creatie.";
@@ -54,10 +70,11 @@
         const token = session.client_secret.value;
         const model = "gpt-4o-realtime-preview";
 
-        // Setup WebRTC connection
+        // --- WebRTC connection ---
         const pc = new RTCPeerConnection();
         mic.getTracks().forEach(t => pc.addTrack(t, mic));
 
+        // 🔊 Handle GPT audio output
         pc.ontrack = (ev) => {
           const [stream] = ev.streams;
           const audio = document.createElement("audio");
@@ -67,29 +84,66 @@
           statusDiv.innerText = "🗣️ GPT luistert en spreekt terug...";
         };
 
+        // 💬 Data channel for text / control
         const dc = pc.createDataChannel("oai-events");
-        dc.onmessage = (e) => console.log("🛰️", e.data);
+
+        let liveText = "";
+        let analyzingEmotion = false;
+
+        dc.onmessage = async (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+
+            // 📝 Live transcript from GPT
+            if (msg.type === "response.text.delta") {
+              liveText += msg.delta;
+              transcriptDiv.textContent = liveText;
+            }
+
+            // ✅ When GPT completes a text response
+            if (msg.type === "response.completed") {
+              if (liveText.trim().length > 0) {
+                console.log("💬 GPT antwoord:", liveText);
+                liveText = "";
+              }
+            }
+
+            // 🧠 Emotion analysis (log only)
+            if (msg.type === "response.emotion") {
+              console.log("🧠 Emotion:", msg.emotion);
+            }
+
+            // 📡 Log generic responses
+            if (msg.type === "error") console.error("⚠️ OpenAI error:", msg.error);
+
+          } catch (err) {
+            // not JSON, ignore
+          }
+        };
 
         dc.onopen = () => {
           console.log("✅ DataChannel open");
+          statusDiv.innerText = "Verbonden! GPT zal zo iets zeggen...";
           dc.send(JSON.stringify({
             type: "session.update",
             session: {
               modalities: ["audio", "text"],
               voice: "nova",
               instructions:
-                "Je bent een vriendelijke Nederlandse verduurzamingsassistent. Praat natuurlijk en geef nuttige tips.",
+                "Je bent de VerduurzaamAdviseur van Woonwijzerwinkel.nl. Geef korte, vriendelijke, praktische antwoorden in het Nederlands (max. 3 zinnen).",
             },
           }));
+          // Begin gesprek
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
               modalities: ["audio", "text"],
-              instructions: "Begroet me vriendelijk alsof we net beginnen te praten.",
+              instructions: "Begroet me kort en vriendelijk alsof we net beginnen te praten.",
             },
           }));
         };
 
+        // --- SDP Offer/Answer handshake ---
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -111,7 +165,21 @@
 
         const answer = { type: "answer", sdp: await resp.text() };
         await pc.setRemoteDescription(answer);
-        statusDiv.innerText = "✅ Verbonden! GPT zal zo iets zeggen...";
+        statusDiv.innerText = "✅ Verbonden — praat nu met de VerduurzaamAdviseur.";
+
+        // 🎯 Simple emotion check timer (every few seconds)
+        setInterval(() => {
+          if (analyzingEmotion) return;
+          analyzingEmotion = true;
+          dc.send(JSON.stringify({
+            type: "response.create",
+            response: {
+              modalities: ["text"],
+              instructions: "Analyseer kort de emotie in de stem van de gebruiker (bijv. blij, kalm, geïrriteerd, onzeker, enthousiast). Antwoord alleen met één Nederlands emotiewoord.",
+            },
+          }));
+          setTimeout(() => { analyzingEmotion = false; }, 1000);
+        }, 15000);
       };
     </script>
   </body>
