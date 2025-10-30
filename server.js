@@ -2,18 +2,18 @@ import express from "express";
 import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
-import systemPrompt from "./systemPrompt.js"; // ✅ import your prompt
+import systemPrompt from "./systemPrompt.js"; // ✅ import system prompt
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve static frontend
+// Serve static frontend files
 app.use(express.static(path.join(__dirname, "public")));
 
 // ---------------------------------------------------------
-//  🎧 /session → Create ephemeral OpenAI Realtime session
+//  🎧 /session → Create OpenAI Realtime session
 // ---------------------------------------------------------
 app.get("/session", async (req, res) => {
   try {
@@ -25,11 +25,11 @@ app.get("/session", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview",
-        voice: "coral", // ✅ updated voice
+        voice: "coral",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
         input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-        instructions: systemPrompt, // ✅ load from file
+        instructions: systemPrompt,
       }),
     });
 
@@ -48,11 +48,18 @@ app.get("/session", async (req, res) => {
 });
 
 // ---------------------------------------------------------
-//  🔍 /search → Query Gemini API for live info
+//  🔍 /search → Query Gemini API (woonwijzerwebshop.nl focused)
 // ---------------------------------------------------------
 app.get("/search", async (req, res) => {
-  const query = req.query.q;
+  let query = req.query.q;
   if (!query) return res.status(400).json({ error: "Missing query" });
+
+  // Always prefer woonwijzerwebshop.nl
+  if (!query.includes("woonwijzerwebshop.nl")) {
+    query = `site:woonwijzerwebshop.nl ${query}`;
+  }
+
+  console.log("🌐 Gemini search query:", query);
 
   try {
     const geminiResp = await fetch(
@@ -67,8 +74,18 @@ app.get("/search", async (req, res) => {
               role: "user",
               parts: [
                 {
-                  text: `Zoek actuele informatie via Google over: ${query}.
-Vat het kort samen in het Nederlands (max. 3 zinnen) en geef maximaal 2 relevante links.`,
+                  text: `
+Gebruik Google-resultaten om de volgende query te beantwoorden:
+"${query}"
+
+Geef een korte Nederlandse samenvatting met maximaal 3 zinnen, 
+en vermeld:
+- 📦 productnaam of type
+- 💶 prijs of prijsindicatie (met valuta)
+- 🔗 relevante link(s) van woonwijzerwebshop.nl
+
+Formateer als vloeiende tekst, geschikt om voorgelezen te worden.
+                  `,
                 },
               ],
             },
@@ -81,6 +98,8 @@ Vat het kort samen in het Nederlands (max. 3 zinnen) en geef maximaal 2 relevant
     const result =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "Geen resultaten gevonden.";
+
+    console.log("✅ Gemini resultaat ontvangen");
     res.json({ result });
   } catch (err) {
     console.error("❌ Gemini search error:", err);
