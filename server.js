@@ -1,5 +1,4 @@
 import express from "express";
-import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
 import systemPrompt from "./systemPrompt.js"; // ✅ import the prompt
@@ -24,7 +23,7 @@ app.get("/session", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-realtime-mini", // ✅ switched model
+        model: "gpt-4o-realtime-mini", // ✅ stable realtime model name
         voice: "coral",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
