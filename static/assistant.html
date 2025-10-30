@@ -4,45 +4,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Meeting Assistant</title>
+  <title>Business Call Assistant</title>
   <style>
     body {
       font-family: system-ui, sans-serif;
-      background: #f7f7f7;
+      background: #f8f9fa;
       color: #222;
       padding: 20px;
     }
-    h1 { font-size: 1.4rem; margin-bottom: 0.5em; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5em; }
     #transcript, #advice {
       border: 1px solid #ddd;
       border-radius: 8px;
       padding: 12px;
       margin-top: 10px;
-      background: white;
+      background: #fff;
       height: 160px;
       overflow-y: auto;
       white-space: pre-wrap;
     }
     button {
-      padding: 10px 16px;
-      background: #007aff;
-      border: none;
-      color: white;
-      border-radius: 6px;
-      cursor: pointer;
       margin-top: 10px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #007aff;
+      color: white;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
   </style>
 </head>
 <body>
-  <h1>💬 Business Call Assistant</h1>
-  <p>Listens via your microphone and suggests what to say next.</p>
+  <h1>💬 Real-Time Business Call Assistant</h1>
+  <p>Listens through your microphone and gives real-time text advice.</p>
   <button id="startBtn">Start Listening</button>
 
   <h3>Transcript</h3>
   <div id="transcript">...</div>
 
-  <h3>Advice</h3>
+  <h3>AI Advice</h3>
   <div id="advice">...</div>
 
   <script>
@@ -60,6 +64,7 @@
       const wsUrl = session.client_secret?.value;
       if (!wsUrl) {
         alert("Failed to create session");
+        startBtn.disabled = false;
         return;
       }
 
@@ -67,14 +72,12 @@
 
       ws.onopen = async () => {
         console.log("🔗 Connected to Realtime API");
-        startBtn.textContent = "Assistant Running";
+        startBtn.textContent = "Listening...";
 
-        // 🎙️ Capture microphone audio
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const audioCtx = new AudioContext({ sampleRate: 16000 });
         const source = audioCtx.createMediaStreamSource(stream);
         const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-
         source.connect(processor);
         processor.connect(audioCtx.destination);
 
