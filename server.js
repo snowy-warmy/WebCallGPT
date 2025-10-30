@@ -21,7 +21,7 @@ app.get("/session", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview",
-        voice: "nova",
+        voice: "coral",
         modalities: ["audio", "text"], // 🧩 both voice + text
         instructions: `
 Je bent de **VerduurzaamAdviseur** van Woonwijzerwinkel.nl — hét fysieke en online loket voor duurzaam wonen.
