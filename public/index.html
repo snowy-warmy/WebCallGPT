@@ -4,43 +4,12 @@
     <meta charset="UTF-8" />
     <title>VerduurzaamAdviseur Voice Chat</title>
     <style>
-      body {
-        font-family: system-ui, sans-serif;
-        text-align: center;
-        background: #f7f8fa;
-        color: #222;
-        padding: 3rem;
-      }
+      body { font-family: system-ui, sans-serif; text-align: center; background: #f7f8fa; color: #222; padding: 3rem; }
       h1 { color: #007b5f; }
-      p { color: #555; }
-      button {
-        margin-top: 1rem;
-        font-size: 1.1rem;
-        padding: 0.8rem 1.6rem;
-        border: none;
-        border-radius: 8px;
-        background: #10a37f;
-        color: #fff;
-        cursor: pointer;
-      }
+      button { margin-top: 1rem; font-size: 1.1rem; padding: 0.8rem 1.6rem; border: none; border-radius: 8px; background: #10a37f; color: #fff; cursor: pointer; }
       button:hover { background: #0d8a6f; }
-      #status {
-        margin-top: 2rem;
-        font-family: monospace;
-        color: #333;
-        white-space: pre-wrap;
-      }
-      #transcript {
-        margin-top: 1rem;
-        background: #fff;
-        border-radius: 8px;
-        padding: 1rem;
-        display: inline-block;
-        text-align: left;
-        width: 80%;
-        max-width: 600px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      }
+      #status { margin-top: 2rem; font-family: monospace; color: #333; white-space: pre-wrap; }
+      #transcript { margin-top: 1rem; background: #fff; border-radius: 8px; padding: 1rem; display: inline-block; text-align: left; width: 80%; max-width: 600px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     </style>
   </head>
   <body>
@@ -53,14 +22,13 @@
     <script type="module">
       const statusDiv = document.getElementById("status");
       const transcriptDiv = document.getElementById("textContent");
-      const startBtn = document.getElementById("start");
 
-      startBtn.onclick = async () => {
+      document.getElementById("start").onclick = async () => {
         statusDiv.innerText = "🎤 Vraag microfoon toegang...";
         const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
         statusDiv.innerText = "✅ Microfoon actief. Verbinden met GPT...";
 
-        // Get ephemeral key from backend
+        // get ephemeral token
         const session = await fetch("/session").then(r => r.json());
         if (!session?.client_secret?.value) {
           statusDiv.innerText = "❌ Fout bij sessie creatie.";
@@ -70,11 +38,11 @@
         const token = session.client_secret.value;
         const model = "gpt-4o-realtime-preview";
 
-        // --- WebRTC connection ---
+        // setup WebRTC
         const pc = new RTCPeerConnection();
         mic.getTracks().forEach(t => pc.addTrack(t, mic));
 
-        // 🔊 Handle GPT audio output
+        // handle GPT audio
         pc.ontrack = (ev) => {
           const [stream] = ev.streams;
           const audio = document.createElement("audio");
@@ -84,41 +52,25 @@
           statusDiv.innerText = "🗣️ GPT luistert en spreekt terug...";
         };
 
-        // 💬 Data channel for text / control
+        // Data channel for text streaming
         const dc = pc.createDataChannel("oai-events");
-
         let liveText = "";
-        let analyzingEmotion = false;
 
         dc.onmessage = async (event) => {
           try {
             const msg = JSON.parse(event.data);
 
-            // 📝 Live transcript from GPT
+            // 📝 text transcription and GPT output
             if (msg.type === "response.text.delta") {
               liveText += msg.delta;
               transcriptDiv.textContent = liveText;
             }
-
-            // ✅ When GPT completes a text response
             if (msg.type === "response.completed") {
-              if (liveText.trim().length > 0) {
-                console.log("💬 GPT antwoord:", liveText);
-                liveText = "";
-              }
+              console.log("💬 GPT antwoord:", liveText);
+              liveText = "";
             }
-
-            // 🧠 Emotion analysis (log only)
-            if (msg.type === "response.emotion") {
-              console.log("🧠 Emotion:", msg.emotion);
-            }
-
-            // 📡 Log generic responses
-            if (msg.type === "error") console.error("⚠️ OpenAI error:", msg.error);
-
-          } catch (err) {
-            // not JSON, ignore
-          }
+            if (msg.type === "error") console.error("⚠️ Error:", msg.error);
+          } catch (e) { /* ignore binary */ }
         };
 
         dc.onopen = () => {
@@ -130,10 +82,9 @@
               modalities: ["audio", "text"],
               voice: "nova",
               instructions:
-                "Je bent de VerduurzaamAdviseur van Woonwijzerwinkel.nl. Geef korte, vriendelijke, praktische antwoorden in het Nederlands (max. 3 zinnen).",
+                "Je bent de VerduurzaamAdviseur van Woonwijzerwinkel.nl. Geef korte, vriendelijke, praktische antwoorden (max. 3 zinnen).",
             },
           }));
-          // Begin gesprek
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
@@ -143,10 +94,9 @@
           }));
         };
 
-        // --- SDP Offer/Answer handshake ---
+        // handshake
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-
         const resp = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
           method: "POST",
           headers: {
@@ -156,30 +106,14 @@
           },
           body: offer.sdp,
         });
-
         if (!resp.ok) {
           statusDiv.innerText = "❌ Verbinding mislukt.";
           console.error(await resp.text());
           return;
         }
-
         const answer = { type: "answer", sdp: await resp.text() };
         await pc.setRemoteDescription(answer);
         statusDiv.innerText = "✅ Verbonden — praat nu met de VerduurzaamAdviseur.";
-
-        // 🎯 Simple emotion check timer (every few seconds)
-        setInterval(() => {
-          if (analyzingEmotion) return;
-          analyzingEmotion = true;
-          dc.send(JSON.stringify({
-            type: "response.create",
-            response: {
-              modalities: ["text"],
-              instructions: "Analyseer kort de emotie in de stem van de gebruiker (bijv. blij, kalm, geïrriteerd, onzeker, enthousiast). Antwoord alleen met één Nederlands emotiewoord.",
-            },
-          }));
-          setTimeout(() => { analyzingEmotion = false; }, 1000);
-        }, 15000);
       };
     </script>
   </body>
