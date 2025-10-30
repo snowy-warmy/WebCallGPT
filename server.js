@@ -24,7 +24,7 @@ app.get("/session", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview",
-        voice: "nova",
+        voice: "coral",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
 
