@@ -50,18 +50,17 @@
 
       startBtn.onclick = async () => {
         try {
-          statusDiv.innerText = "🎤 Toegang tot microfoon aanvragen...";
+          statusDiv.innerText = "🎤 Microfoon wordt gestart...";
           const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-          statusDiv.innerText = "✅ Microfoon actief. Verbinden met de adviseur...";
 
-          // 1️⃣ Ask server for session
+          statusDiv.innerText = "🔗 Verbinden met de Verduurzaam Adviseur...";
+
+          // 1️⃣ Create temporary OpenAI Realtime session from backend
           const sessionResp = await fetch("/session");
           const sessionData = await sessionResp.json();
 
-          if (!sessionResp.ok || !sessionData?.client_secret?.value) {
-            console.error("Session creation failed:", sessionData);
-            statusDiv.innerText = "❌ Fout bij sessie creatie.";
-            return;
+          if (!sessionData?.client_secret?.value) {
+            throw new Error("Geen geldige sessie ontvangen van server.");
           }
 
           const EPHEMERAL_KEY = sessionData.client_secret.value;
@@ -82,49 +81,107 @@
             }
           };
 
-          // 4️⃣ Send local mic track
+          // 4️⃣ Send mic audio
           mic.getTracks().forEach((track) => pc.addTrack(track, mic));
 
-          // 5️⃣ Create data channel for control & text
+          // 5️⃣ Data channel for events/text/actions
           const dc = pc.createDataChannel("oai-events");
-          dc.onmessage = (e) => {
-            const msg = JSON.parse(e.data);
-            if (msg.type === "response.output_text.delta") {
-              console.log("💬", msg.delta);
+
+          dc.onmessage = async (evt) => {
+            try {
+              const msg = JSON.parse(evt.data);
+
+              // 📝 Text stream from GPT
+              if (msg.type === "response.output_text.delta") {
+                console.log("💬", msg.delta);
+              }
+
+              // 🌐 Web search request
+              if (msg.action === "search" && msg.query) {
+                console.log("🔍 GPT vraagt om zoekopdracht:", msg.query);
+                dc.send(
+                  JSON.stringify({
+                    type: "response.create",
+                    response: {
+                      modalities: ["audio", "text"],
+                      instructions:
+                        "Een momentje, ik zoek dat even voor je op...",
+                    },
+                  })
+                );
+                const resp = await fetch(
+                  `/search?q=${encodeURIComponent(msg.query)}`
+                );
+                const data = await resp.json();
+                console.log("🔎 Gemini resultaat:", data.result);
+                dc.send(
+                  JSON.stringify({
+                    type: "response.create",
+                    response: {
+                      modalities: ["audio", "text"],
+                      instructions: `
+Gebruik deze informatie om direct antwoord te geven, zonder dat de gebruiker iets hoeft te herhalen:
+${data.result}
+                        `,
+                    },
+                  })
+                );
+              }
+
+              // 📞 Lead capture action
+              if (msg.action === "save_lead" && msg.data) {
+                console.log("📞 Leadgegevens ontvangen:", msg.data);
+                statusDiv.innerText = "📞 Lead wordt opgeslagen...";
+                fetch("/lead", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(msg.data),
+                }).then((r) => {
+                  if (r.ok)
+                    statusDiv.innerText = "✅ Gegevens opgeslagen, dank je!";
+                  else statusDiv.innerText = "⚠️ Opslaan mislukt.";
+                });
+              }
+            } catch (err) {
+              console.error("⚠️ Fout bij verwerken bericht:", err);
             }
           };
 
           dc.onopen = () => {
-            console.log("✅ DataChannel geopend");
-            statusDiv.innerText = "🤖 Verbonden met de Verduurzaam Adviseur...";
+            console.log("✅ DataChannel open");
+            statusDiv.innerText =
+              "🤖 Verbonden met de Verduurzaam Adviseur...";
 
-            // Greet user
+            // Greeting
             dc.send(
               JSON.stringify({
                 type: "response.create",
                 response: {
                   modalities: ["audio", "text"],
-                  instructions: "Hallo, waar kan ik je mee helpen op het gebied van verduurzamen?",
+                  instructions:
+                    "Hallo, waar kan ik je mee helpen op het gebied van verduurzamen?",
                 },
               })
             );
           };
 
-          // 6️⃣ Create SDP offer
+          // 6️⃣ WebRTC SDP offer
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
 
           // 7️⃣ Send offer to OpenAI Realtime API
-          const baseUrl = "https://api.openai.com/v1/realtime";
-          const sdpResponse = await fetch(`${baseUrl}?model=${MODEL}`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${EPHEMERAL_KEY}`,
-              "Content-Type": "application/sdp",
-              "OpenAI-Beta": "realtime=v1",
-            },
-            body: offer.sdp,
-          });
+          const sdpResponse = await fetch(
+            `https://api.openai.com/v1/realtime?model=${MODEL}`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${EPHEMERAL_KEY}`,
+                "Content-Type": "application/sdp",
+                "OpenAI-Beta": "realtime=v1",
+              },
+              body: offer.sdp,
+            }
+          );
 
           if (!sdpResponse.ok) {
             const errText = await sdpResponse.text();
@@ -133,12 +190,13 @@
             return;
           }
 
+          // 8️⃣ Apply answer
           const answer = { type: "answer", sdp: await sdpResponse.text() };
           await pc.setRemoteDescription(answer);
 
           statusDiv.innerText = "✅ Verbonden! Je kunt nu praten met de adviseur.";
         } catch (err) {
-          console.error("❌ Setup error:", err);
+          console.error("❌ Setup fout:", err);
           statusDiv.innerText = "❌ Verbinding mislukt.";
         }
       };
