@@ -50,13 +50,20 @@
       #textContent {
         white-space: pre-wrap;
       }
+      #thinking {
+        display: none;
+        margin-top: 1rem;
+        color: #007b5f;
+        font-style: italic;
+      }
     </style>
   </head>
   <body>
-    <h1>🎙️ VerduurzaamAdviseur</h1>
-    <p>Klik op “Start” en praat — de assistent luistert, praat terug en toont de tekst live.</p>
+    <h1>🏡 VerduurzaamAdviseur</h1>
+    <p>Klik op “Start” en praat — de adviseur luistert en geeft direct antwoord.</p>
     <button id="start">Start</button>
     <div id="status">Niet verbonden</div>
+    <div id="thinking">💭 Even zoeken bij woonwijzerwebshop.nl...</div>
     <div id="transcript">
       🗒️ <strong>Live transcript:</strong><br />
       <span id="textContent">...</span>
@@ -65,6 +72,7 @@
     <script type="module">
       const statusDiv = document.getElementById("status");
       const transcriptDiv = document.getElementById("textContent");
+      const thinkingDiv = document.getElementById("thinking");
       const startBtn = document.getElementById("start");
 
       startBtn.onclick = async () => {
@@ -73,7 +81,7 @@
           const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
           statusDiv.innerText = "✅ Microfoon actief. Verbinden met GPT...";
 
-          // Get ephemeral session from backend
+          // Get ephemeral session
           const session = await fetch("/session").then((r) => r.json());
           if (!session?.client_secret?.value) {
             statusDiv.innerText = "❌ Fout bij sessie creatie.";
@@ -82,130 +90,109 @@
 
           const token = session.client_secret.value;
           const model = "gpt-4o-realtime-preview";
-
-          // Setup WebRTC
           const pc = new RTCPeerConnection();
           mic.getTracks().forEach((t) => pc.addTrack(t, mic));
 
-          // 🔊 GPT audio output
           pc.ontrack = (ev) => {
             const [stream] = ev.streams;
             const audio = document.createElement("audio");
             audio.autoplay = true;
             audio.srcObject = stream;
             document.body.appendChild(audio);
-            statusDiv.innerText = "🗣️ GPT luistert en spreekt terug...";
+            statusDiv.innerText = "🗣️ De adviseur luistert en spreekt terug...";
           };
 
-          // 💬 Data channel for GPT events
           const dc = pc.createDataChannel("oai-events");
           let liveText = "";
           let userTranscript = "";
 
-          // 🧠 Handle incoming GPT messages
           dc.onmessage = async (event) => {
             try {
               const msg = JSON.parse(event.data);
 
-              // 👂 Live transcription (user speech)
               if (msg.type === "input_audio_buffer.transcript.delta") {
                 userTranscript += msg.delta;
                 transcriptDiv.textContent = userTranscript;
               }
 
-              if (msg.type === "input_audio_buffer.transcript.completed") {
-                console.log("👤 Gebruiker zei:", userTranscript);
-                userTranscript += "\n";
-              }
-
-              // 💬 Assistant text
               if (msg.type === "response.text.delta") {
                 liveText += msg.delta;
                 transcriptDiv.textContent = userTranscript + "\n🤖 " + liveText;
               }
 
               if (msg.type === "response.completed") {
-                if (liveText.trim().length > 0) {
-                  console.log("💬 GPT antwoord:", liveText);
-                }
+                console.log("💬 GPT antwoord:", liveText);
                 liveText = "";
               }
 
-              // 🌐 If GPT asks for a Google/Gemini search
+              // 🌐 Web search handling
               if (msg.action === "search" && msg.query) {
                 console.log("🔍 GPT vraagt om zoekopdracht:", msg.query);
+                thinkingDiv.style.display = "block";
 
-                // 🗣️ Let the assistant speak naturally before searching
+                // Friendly audio feedback while searching
                 dc.send(
                   JSON.stringify({
                     type: "response.create",
                     response: {
                       modalities: ["audio", "text"],
                       instructions:
-                        "Zeker! Moment alstublieft, ik zoek het even voor u op...",
+                        "Een momentje, ik zoek dit even voor je op bij woonwijzerwebshop.nl...",
                     },
                   })
                 );
 
-                // 🔎 Perform Gemini search
-                const resp = await fetch(`/search?q=${encodeURIComponent(msg.query)}`);
+                const resp = await fetch(
+                  `/search?q=${encodeURIComponent(msg.query)}`
+                );
                 const data = await resp.json();
-
+                thinkingDiv.style.display = "none";
                 console.log("🔎 Gemini resultaat:", data.result);
 
-                // 🎤 Send the results back for a follow-up spoken answer
                 dc.send(
                   JSON.stringify({
                     type: "response.create",
                     response: {
                       modalities: ["audio", "text"],
-                      instructions: `Ik heb dit gevonden:\n\n${data.result}\n\nGeef nu een kort, vriendelijk antwoord gebaseerd op deze informatie.`,
+                      instructions: `Ik heb dit gevonden:\n\n${data.result}\n\nGebruik deze informatie om een kort antwoord te geven.`,
                     },
                   })
                 );
               }
-
-              if (msg.type === "error") {
-                console.error("⚠️ OpenAI error:", msg.error);
-              }
             } catch (err) {
-              // ignore binary packets
+              // ignore binary data
             }
           };
 
-          // 🔗 When ready
           dc.onopen = () => {
             console.log("✅ DataChannel open");
-            statusDiv.innerText = "Verbonden! GPT zal zo iets zeggen...";
+            statusDiv.innerText = "Verbonden — de adviseur luistert.";
             dc.send(
               JSON.stringify({
                 type: "session.update",
                 session: {
                   modalities: ["audio", "text"],
                   voice: "coral",
-                  instructions:
-                    "Je bent de VerduurzaamAdviseur. Geef korte, vriendelijke, praktische antwoorden in het Nederlands (max. 3 zinnen).",
                 },
               })
             );
 
-            // Start conversation
+            // ✅ Start professional greeting
             dc.send(
               JSON.stringify({
                 type: "response.create",
                 response: {
                   modalities: ["audio", "text"],
                   instructions:
-                    "Begroet me kort en vriendelijk alsof we net beginnen te praten.",
+                    "Hallo, waar kan ik je mee helpen op het gebied van verduurzamen?",
                 },
               })
             );
           };
 
-          // 🔄 SDP handshake
+          // SDP handshake
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-
           const resp = await fetch(
             `https://api.openai.com/v1/realtime?model=${model}`,
             {
@@ -218,17 +205,14 @@
               body: offer.sdp,
             }
           );
-
           if (!resp.ok) {
             statusDiv.innerText = "❌ Verbinding mislukt.";
             console.error(await resp.text());
             return;
           }
-
           const answer = { type: "answer", sdp: await resp.text() };
           await pc.setRemoteDescription(answer);
-          statusDiv.innerText =
-            "✅ Verbonden — praat nu met de VerduurzaamAdviseur.";
+          statusDiv.innerText = "✅ Verbonden — praat nu met de VerduurzaamAdviseur.";
         } catch (err) {
           console.error("❌ Setup error:", err);
           statusDiv.innerText = "❌ Fout bij verbinden of microfoon.";
