@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve static frontend files
+app.use(express.json()); // ✅ parse JSON bodies
 app.use(express.static(path.join(__dirname, "public")));
 
 // ---------------------------------------------------------
@@ -23,7 +23,7 @@ app.get("/session", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-realtime-mini-2025-10-06",
+        model: "gpt-4o-realtime-mini",
         voice: "coral",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
@@ -53,7 +53,6 @@ app.get("/search", async (req, res) => {
   let query = req.query.q?.toLowerCase();
   if (!query) return res.status(400).json({ error: "Missing query" });
 
-  // 🧠 Prevent searching for known Woonwijzerwinkel topics
   const serviceKeywords = [
     "installateur",
     "installatie",
@@ -69,10 +68,7 @@ app.get("/search", async (req, res) => {
 
   if (serviceKeywords.some((kw) => query.includes(kw))) {
     console.log("⚡ Local response triggered — no Gemini search:", query);
-
-    // Predefined company-aware responses
     let reply = "Bij Woonwijzerwinkel helpen we hiermee. ";
-
     if (query.includes("install"))
       reply +=
         "Wij regelen complete installatie en montage via onze eigen monteurs en partners.";
@@ -88,13 +84,9 @@ app.get("/search", async (req, res) => {
     else if (query.includes("winkel") || query.includes("showroom"))
       reply +=
         "We hebben fysieke showrooms in Rotterdam, Eindhoven en Den Haag waar je onze producten kunt bekijken.";
-
-    return res.json({
-      result: reply,
-    });
+    return res.json({ result: reply });
   }
 
-  // Otherwise — perform Gemini lookup
   if (!query.includes("woonwijzerwebshop.nl")) {
     query = `site:woonwijzerwebshop.nl ${query}`;
   }
@@ -137,9 +129,7 @@ Vermijd Markdown, HTML of links. Noem de domeinnaam als spraak, bijvoorbeeld: "o
     const result =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "Geen resultaten gevonden.";
-
     console.log("✅ Gemini resultaat ontvangen");
-
     res.json({
       result: `Informatie van woonwijzerwebshop.nl:\n${result}\nVat dit samen in natuurlijke spraak zonder URLs.`,
     });
@@ -147,6 +137,22 @@ Vermijd Markdown, HTML of links. Noem de domeinnaam als spraak, bijvoorbeeld: "o
     console.error("❌ Gemini search error:", err);
     res.status(500).json({ error: "Gemini search failed" });
   }
+});
+
+// ---------------------------------------------------------
+// 📞 /lead → Receive lead data from the assistant
+// ---------------------------------------------------------
+app.post("/lead", (req, res) => {
+  const { postcode, huisnummer, telefoon } = req.body || {};
+  console.log("📞 Nieuwe lead ontvangen:");
+  console.log("   Postcode:", postcode);
+  console.log("   Huisnummer:", huisnummer);
+  console.log("   Telefoon:", telefoon);
+  if (!postcode || !huisnummer || !telefoon) {
+    console.warn("⚠️ Incomplete lead data");
+    return res.status(400).json({ error: "Incomplete lead data" });
+  }
+  res.json({ success: true });
 });
 
 // ---------------------------------------------------------
