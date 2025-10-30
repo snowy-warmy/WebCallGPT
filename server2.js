@@ -9,8 +9,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Serve static assistant frontend
-app.use(express.static(path.join(__dirname, "static")));
+// ✅ Serve assistant UI from /assistant path
+app.use("/assistant", express.static(path.join(__dirname, "static")));
 
 // ---------------------------------------------------------
 //  🎧 /assistant-session → Create OpenAI Realtime session
@@ -24,20 +24,19 @@ app.get("/assistant-session", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-realtime-mini-2025-10-06",
+        model: "gpt-4o-realtime-preview-2024-12-17",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
         input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-        // The system prompt defines its personality and purpose
         instructions: `
 You are a live business-call assistant.
-You listen to a conversation through the microphone.
+You listen through the user's microphone.
 Your job:
 - Transcribe what is being said in real time.
-- Identify key questions, requests, or negotiation points.
-- Suggest professional, polite, and confident responses as text.
-- Keep advice short, clear, and easy to say aloud.
-Do NOT produce audio. Do NOT repeat the transcript. Only give helpful textual advice.
+- Identify key questions, objections, or requests.
+- Suggest short, polite, and professional responses the user could say.
+- Do NOT output audio. Only text.
+Keep it concise and natural.
         `,
       }),
     });
@@ -56,6 +55,13 @@ Do NOT produce audio. Do NOT repeat the transcript. Only give helpful textual ad
   }
 });
 
+// ---------------------------------------------------------
+//  Root info route
+// ---------------------------------------------------------
+app.get("/", (req, res) => {
+  res.send("🤖 Assistant server running. Visit /assistant/assistant.html");
+});
+
 app.listen(PORT, () =>
-  console.log(`🤖 Assistant server listening on port ${PORT}`)
+  console.log(`🚀 Assistant server running at http://localhost:${PORT}`)
 );
