@@ -24,7 +24,7 @@ app.get("/assistant-session", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-realtime-preview-2024-12-17",
+        model: "gpt-realtime-mini-2025-10-06",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
         input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
