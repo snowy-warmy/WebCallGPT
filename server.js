@@ -22,7 +22,7 @@ app.get("/session", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview",
-        voice: "nova",
+        voice: "coral",
         instructions: "Je bent een vriendelijke Nederlandse verduurzamingsassistent."
       })
     });
