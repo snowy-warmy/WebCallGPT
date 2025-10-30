@@ -23,7 +23,7 @@ app.get("/session", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-realtime-mini",
+        model: "gpt-realtime-mini-2025-10-06",
         voice: "coral",
         modalities: ["audio", "text"],
         input_audio_format: "pcm16",
