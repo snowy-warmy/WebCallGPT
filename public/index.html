@@ -4,12 +4,43 @@
     <meta charset="UTF-8" />
     <title>VerduurzaamAdviseur Voice Chat</title>
     <style>
-      body { font-family: system-ui, sans-serif; text-align: center; background: #f7f8fa; color: #222; padding: 3rem; }
+      body {
+        font-family: system-ui, sans-serif;
+        text-align: center;
+        background: #f7f8fa;
+        color: #222;
+        padding: 3rem;
+      }
       h1 { color: #007b5f; }
-      button { margin-top: 1rem; font-size: 1.1rem; padding: 0.8rem 1.6rem; border: none; border-radius: 8px; background: #10a37f; color: #fff; cursor: pointer; }
+      p { color: #555; }
+      button {
+        margin-top: 1rem;
+        font-size: 1.1rem;
+        padding: 0.8rem 1.6rem;
+        border: none;
+        border-radius: 8px;
+        background: #10a37f;
+        color: #fff;
+        cursor: pointer;
+      }
       button:hover { background: #0d8a6f; }
-      #status { margin-top: 2rem; font-family: monospace; color: #333; white-space: pre-wrap; }
-      #transcript { margin-top: 1rem; background: #fff; border-radius: 8px; padding: 1rem; display: inline-block; text-align: left; width: 80%; max-width: 600px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+      #status {
+        margin-top: 2rem;
+        font-family: monospace;
+        color: #333;
+        white-space: pre-wrap;
+      }
+      #transcript {
+        margin-top: 1rem;
+        background: #fff;
+        border-radius: 8px;
+        padding: 1rem;
+        display: inline-block;
+        text-align: left;
+        width: 80%;
+        max-width: 600px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      }
     </style>
   </head>
   <body>
@@ -22,13 +53,14 @@
     <script type="module">
       const statusDiv = document.getElementById("status");
       const transcriptDiv = document.getElementById("textContent");
+      const startBtn = document.getElementById("start");
 
-      document.getElementById("start").onclick = async () => {
+      startBtn.onclick = async () => {
         statusDiv.innerText = "🎤 Vraag microfoon toegang...";
         const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
         statusDiv.innerText = "✅ Microfoon actief. Verbinden met GPT...";
 
-        // get ephemeral token
+        // Get ephemeral session from server
         const session = await fetch("/session").then(r => r.json());
         if (!session?.client_secret?.value) {
           statusDiv.innerText = "❌ Fout bij sessie creatie.";
@@ -38,11 +70,11 @@
         const token = session.client_secret.value;
         const model = "gpt-4o-realtime-preview";
 
-        // setup WebRTC
+        // Setup WebRTC connection
         const pc = new RTCPeerConnection();
         mic.getTracks().forEach(t => pc.addTrack(t, mic));
 
-        // handle GPT audio
+        // Handle GPT audio output
         pc.ontrack = (ev) => {
           const [stream] = ev.streams;
           const audio = document.createElement("audio");
@@ -52,25 +84,44 @@
           statusDiv.innerText = "🗣️ GPT luistert en spreekt terug...";
         };
 
-        // Data channel for text streaming
+        // Data channel for text / control
         const dc = pc.createDataChannel("oai-events");
-        let liveText = "";
 
+        let liveText = "";
+        let userTranscript = "";
+
+        // ✅ Handle streaming events
         dc.onmessage = async (event) => {
           try {
             const msg = JSON.parse(event.data);
 
-            // 📝 text transcription and GPT output
+            // 👤 Live USER speech-to-text
+            if (msg.type === "input_audio_buffer.transcript.delta") {
+              userTranscript += msg.delta;
+              transcriptDiv.textContent = userTranscript;
+            }
+
+            if (msg.type === "input_audio_buffer.transcript.completed") {
+              console.log("👤 Gebruiker zei:", userTranscript);
+              // Optional: reset or keep visible
+              userTranscript += "\n";
+            }
+
+            // 🤖 Assistant text output (what GPT says)
             if (msg.type === "response.text.delta") {
               liveText += msg.delta;
-              transcriptDiv.textContent = liveText;
+              transcriptDiv.textContent = userTranscript + "\n🤖 " + liveText;
             }
+
             if (msg.type === "response.completed") {
               console.log("💬 GPT antwoord:", liveText);
               liveText = "";
             }
+
             if (msg.type === "error") console.error("⚠️ Error:", msg.error);
-          } catch (e) { /* ignore binary */ }
+          } catch (err) {
+            // ignore binary events
+          }
         };
 
         dc.onopen = () => {
@@ -82,9 +133,11 @@
               modalities: ["audio", "text"],
               voice: "nova",
               instructions:
-                "Je bent de VerduurzaamAdviseur van Woonwijzerwinkel.nl. Geef korte, vriendelijke, praktische antwoorden (max. 3 zinnen).",
+                "Je bent de VerduurzaamAdviseur van Woonwijzerwinkel.nl. Geef korte, vriendelijke, praktische antwoorden in het Nederlands (max. 3 zinnen).",
             },
           }));
+
+          // Start conversation
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
@@ -94,9 +147,10 @@
           }));
         };
 
-        // handshake
+        // --- SDP Offer/Answer handshake ---
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
+
         const resp = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
           method: "POST",
           headers: {
@@ -106,11 +160,13 @@
           },
           body: offer.sdp,
         });
+
         if (!resp.ok) {
           statusDiv.innerText = "❌ Verbinding mislukt.";
           console.error(await resp.text());
           return;
         }
+
         const answer = { type: "answer", sdp: await resp.text() };
         await pc.setRemoteDescription(answer);
         statusDiv.innerText = "✅ Verbonden — praat nu met de VerduurzaamAdviseur.";
