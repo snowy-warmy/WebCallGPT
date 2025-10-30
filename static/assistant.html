@@ -1,0 +1,112 @@
+<!-- static/assistant.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meeting Assistant</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f7f7f7;
+      color: #222;
+      padding: 20px;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5em; }
+    #transcript, #advice {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 10px;
+      background: white;
+      height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    button {
+      padding: 10px 16px;
+      background: #007aff;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>💬 Business Call Assistant</h1>
+  <p>Listens via your microphone and suggests what to say next.</p>
+  <button id="startBtn">Start Listening</button>
+
+  <h3>Transcript</h3>
+  <div id="transcript">...</div>
+
+  <h3>Advice</h3>
+  <div id="advice">...</div>
+
+  <script>
+    const transcriptEl = document.getElementById("transcript");
+    const adviceEl = document.getElementById("advice");
+    const startBtn = document.getElementById("startBtn");
+
+    async function startAssistant() {
+      startBtn.disabled = true;
+      startBtn.textContent = "Connecting...";
+
+      const resp = await fetch("/assistant-session");
+      const session = await resp.json();
+
+      const wsUrl = session.client_secret?.value;
+      if (!wsUrl) {
+        alert("Failed to create session");
+        return;
+      }
+
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = async () => {
+        console.log("🔗 Connected to Realtime API");
+        startBtn.textContent = "Assistant Running";
+
+        // 🎙️ Capture microphone audio
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const audioCtx = new AudioContext({ sampleRate: 16000 });
+        const source = audioCtx.createMediaStreamSource(stream);
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+
+        processor.onaudioprocess = (e) => {
+          const input = e.inputBuffer.getChannelData(0);
+          const pcm16 = new Int16Array(input.length);
+          for (let i = 0; i < input.length; i++) {
+            pcm16[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
+          }
+          ws.send(pcm16.buffer);
+        };
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "transcript") {
+          transcriptEl.textContent = data.text || transcriptEl.textContent;
+        }
+        if (data.type === "response") {
+          const text = data.output_text || "";
+          if (text) adviceEl.textContent = text;
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("🔌 Connection closed");
+        startBtn.textContent = "Start Listening";
+        startBtn.disabled = false;
+      };
+    }
+
+    startBtn.addEventListener("click", startAssistant);
+  </script>
+</body>
+</html>
